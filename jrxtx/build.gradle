@@ -1,6 +1,5 @@
-version = '1.0.1'
+version = '1.0.1.1-alc'
 group = 'org.openmuc'
-def libName = 'librxtxSerial'
 
 dependencies {
     compile project(':gnu-io')
@@ -37,25 +36,32 @@ uploadArchives {
     }
 }
 
+// This task was customized to organize the bundled native libraries to allow
+// support for multiple linux architectures.
+// Install the native libs with the desired relative pathing in native/alc
+// to incorporate them into the jar via the buildWithNative task.
 task copyNativeLibs(type: Copy) {
-    def Set<File> libs
-    def libInclude = "**/${libName}"
+	def libSourceDir = "${project.rootDir}/native/alc"
     def resDir = project(':jrxtx').sourceSets.main.output.resourcesDir
 
-    libs = fileTree(dir: "${project.rootDir}/native", includes: ["${libInclude}.so", "${libInclude}.dll", "${libInclude}.jnilib" ]).files
-    from libs
+    from libSourceDir
     into resDir.absolutePath + '/libs'
 
-    // The resulting Manifest was missing Bundle-NativeCode, so the native librarys could not be loaded in an osgi context 
+    // The resulting Manifest was missing Bundle-NativeCode, so the native libraries could not be loaded in an osgi context
     // credits to b-dreissigacker
     def Set<String> bundleNativeLibs = []
     def String bundleNativeCode
 
     doLast {
+		def Set<File> libs
+		libs = fileTree(dir: resDir).files
         libs.each {
-            if ( it.getName().endsWith('.dll') ) bundleNativeLibs.add('libs/'+it.getName()+';osname=Win32;processor=x86')
-            if ( it.getName().endsWith('.so') ) bundleNativeLibs.add('libs/'+it.getName()+';osname=Linux;processor=x86-64')
-            if ( it.getName().endsWith('.jnilib') ) bundleNativeLibs.add('libs/'+it.getName()+';osname=MacOSX;processor=x86-64')
+			def arch = it.getParentFile().getName()
+			def os = it.getParentFile().getParentFile().getName()
+			def bundle = (arch.equalsIgnoreCase("windows")) ?
+                    "libs/${arch}/${it.getName()};osname=win32;processor=x86-64" :
+                    "libs/${os}/${arch}/${it.getName()};osname=${os};processor=${arch}"
+			bundleNativeLibs.add(bundle)
         }
 
         bundleNativeCode = bundleNativeLibs.join(',')

@@ -26,7 +26,7 @@ class LibraryLoader {
 
     public synchronized static void loadRxtxNative() {
         try {
-            loadLibsFromJar("/libs");
+            loadLibsFromJar( getNativeLibsPath() );
         } catch (LibLoadException e) {
             try {
                 System.loadLibrary("rxtxSerial");
@@ -36,6 +36,22 @@ class LibraryLoader {
                 throw e1;
             }
         }
+    }
+
+    // this method was customized to load native libs from a path determined
+    // by the os name and os arch properties.
+    private static String getNativeLibsPath() {
+        final String OS = System.getProperty("os.name").replaceAll(" ", "_").toLowerCase();
+        final String arch = System.getProperty("os.arch").replaceAll(" ", "_").toLowerCase();
+
+        if(OS.contains("win"))
+            return String.join("/", "/libs", "windows");
+
+        if(OS.contains("nix") || OS.contains("nux")) {
+            return String.join("/", "/libs", "linux", arch);
+        }
+
+        return String.join("/", "/libs", OS, arch);
     }
 
     private static boolean loadLibsFromJar(String... toResPaths) throws LibLoadException {
@@ -105,11 +121,8 @@ class LibraryLoader {
                 continue;
             }
 
-            InputStream fileInputStream = jar.getInputStream(element);
-            try {
+            try(InputStream fileInputStream = jar.getInputStream(element)) {
                 saveResStreamToFileAndLoad(element.getName(), fileInputStream);
-            } finally {
-                saveClose(fileInputStream);
             }
         }
     }
@@ -123,20 +136,15 @@ class LibraryLoader {
         File tempFileLib = File.createTempFile(matcher.group(1), matcher.group(2));
         tempFileLib.deleteOnExit();
 
-        FileOutputStream fos = null;
-        try {
-
-            fos = new FileOutputStream(tempFileLib);
+        try (FileOutputStream fos = new FileOutputStream(tempFileLib)) {
             byte[] buffer = new byte[2048];
             int len;
             while ((len = is.read(buffer)) > 0) {
                 fos.write(buffer, 0, len);
             }
+        } catch (IOException e) { throw e; }
 
-            System.load(tempFileLib.getAbsolutePath());
-        } finally {
-            saveClose(fos);
-        }
+        System.load(tempFileLib.getAbsolutePath());
     }
 
     private static void saveClose(Closeable closeable) throws IOException {
